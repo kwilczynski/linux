@@ -459,8 +459,6 @@ struct pci_dev {
 	u32		saved_config_space[16]; /* Config space saved at suspend time */
 	struct hlist_head saved_cap_space;
 	int		rom_attr_enabled;	/* Display of ROM attribute enabled? */
-	struct bin_attribute *res_attr[DEVICE_COUNT_RESOURCE]; /* sysfs file for resources */
-	struct bin_attribute *res_attr_wc[DEVICE_COUNT_RESOURCE]; /* sysfs file for WC mapping of resources */
 
 #ifdef CONFIG_HOTPLUG_PCI_PCIE
 	unsigned int	broken_cmd_compl:1;	/* No compl for some cmds */
@@ -1838,6 +1836,23 @@ pci_alloc_irq_vectors(struct pci_dev *dev, unsigned int min_vecs,
 /* Include architecture-dependent settings and functions */
 
 #include <asm/pci.h>
+
+#if defined(HAVE_PCI_LEGACY) && defined(CONFIG_ALPHA)
+int has_sparse(struct pci_controller *hose, enum pci_mmap_state mmap_type);
+#endif
+
+#if !(defined(HAVE_PCI_MMAP) || defined(ARCH_GENERIC_PCI_MMAP_RESOURCE))
+enum pci_resource_type {
+	PCI_RESOURCE_NORMAL	= BIT(0),
+	PCI_RESOURCE_SPARSE	= BIT(1),
+	PCI_RESOURCE_DENSE	= BIT(2),
+};
+
+extern umode_t pci_dev_resource_attr_is_visible(struct kobject *kobj,
+						struct bin_attribute *attr,
+						int bar,
+						enum pci_resource_type type);
+#endif
 
 /* These two functions provide almost identical functionality. Depending
  * on the architecture, one will be implemented as a wrapper around the

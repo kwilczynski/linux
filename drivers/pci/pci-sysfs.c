@@ -29,8 +29,6 @@
 #include <linux/of.h>
 #include "pci.h"
 
-static int sysfs_initialized;	/* = 0 */
-
 /* show configuration fields */
 #define pci_config_attr(field, format_string)				\
 static ssize_t								\
@@ -432,11 +430,6 @@ static struct attribute *pci_bus_attrs[] = {
 
 static const struct attribute_group pci_bus_group = {
 	.attrs = pci_bus_attrs,
-};
-
-const struct attribute_group *pci_bus_groups[] = {
-	&pci_bus_group,
-	NULL,
 };
 
 static ssize_t dev_rescan_store(struct device *dev,
@@ -923,86 +916,85 @@ static int pci_mmap_legacy_io(struct file *filp, struct kobject *kobj,
 	return pci_mmap_legacy_page_range(bus, vma, pci_mmap_io);
 }
 
-/**
- * pci_adjust_legacy_attr - adjustment of legacy file attributes
- * @b: bus to create files under
- * @mmap_type: I/O port or memory
- *
- * Stub implementation. Can be overridden by arch if necessary.
- */
-void __weak pci_adjust_legacy_attr(struct pci_bus *b,
-				   enum pci_mmap_state mmap_type)
+
+#ifdef CONFIG_ALPHA
+#define LEGACY_BIN_ATTR(_name) \
+	BIN_ATTR(_name, 0600, NULL, NULL, 0)
+#else
+#define LEGACY_BIN_ATTR(_name) \
+	BIN_ATTR(#_name#_sparse, 0600, NULL, NULL, 0)
+#endif
+
+static umode_t pci_bus_legacy_attr_is_visible(struct kobject *kobj,
+					      struct bin_attribute *attr,
+					      enum pci_mmap_state mmap_type)
 {
-}
 
-/**
- * pci_create_legacy_files - create legacy I/O port and memory files
- * @b: bus to create files under
- *
- * Some platforms allow access to legacy I/O port and ISA memory space on
- * a per-bus basis.  This routine creates the files and ties them into
- * their associated read, write and mmap files from pci-sysfs.c
- *
- * On error unwind, but don't propagate the error to the caller
- * as it is ok to set up the PCI bus without these files.
- */
-void pci_create_legacy_files(struct pci_bus *b)
-{
-	int error;
+#ifdef CONFIG_ALPHA
+	struct pci_bus *bus = to_pci_bus(kobj_to_dev(kobj));
+	struct pci_controller *hose = bus->sysdata;
 
-	if (!sysfs_initialized)
-		return;
+	if (!has_sparse(hose, mmap_type))
+		return 0;
+#endif
 
-	b->legacy_io = kcalloc(2, sizeof(struct bin_attribute),
-			       GFP_ATOMIC);
-	if (!b->legacy_io)
-		goto kzalloc_err;
-
-	sysfs_bin_attr_init(b->legacy_io);
-	b->legacy_io->attr.name = "legacy_io";
-	b->legacy_io->size = 0xffff;
-	b->legacy_io->attr.mode = 0600;
-	b->legacy_io->read = pci_read_legacy_io;
-	b->legacy_io->write = pci_write_legacy_io;
-	b->legacy_io->mmap = pci_mmap_legacy_io;
-	b->legacy_io->mapping = iomem_get_mapping();
-	pci_adjust_legacy_attr(b, pci_mmap_io);
-	error = device_create_bin_file(&b->dev, b->legacy_io);
-	if (error)
-		goto legacy_io_err;
-
-	/* Allocated above after the legacy_io struct */
-	b->legacy_mem = b->legacy_io + 1;
-	sysfs_bin_attr_init(b->legacy_mem);
-	b->legacy_mem->attr.name = "legacy_mem";
-	b->legacy_mem->size = 1024*1024;
-	b->legacy_mem->attr.mode = 0600;
-	b->legacy_mem->mmap = pci_mmap_legacy_mem;
-	b->legacy_io->mapping = iomem_get_mapping();
-	pci_adjust_legacy_attr(b, pci_mmap_mem);
-	error = device_create_bin_file(&b->dev, b->legacy_mem);
-	if (error)
-		goto legacy_mem_err;
-
-	return;
-
-legacy_mem_err:
-	device_remove_bin_file(&b->dev, b->legacy_io);
-legacy_io_err:
-	kfree(b->legacy_io);
-	b->legacy_io = NULL;
-kzalloc_err:
-	dev_warn(&b->dev, "could not create legacy I/O port and ISA memory resources in sysfs\n");
-}
-
-void pci_remove_legacy_files(struct pci_bus *b)
-{
-	if (b->legacy_io) {
-		device_remove_bin_file(&b->dev, b->legacy_io);
-		device_remove_bin_file(&b->dev, b->legacy_mem);
-		kfree(b->legacy_io); /* both are allocated here */
+	if (mmap_type == pci_mmap_mem) {
+		attr->size = 0x100000;
+		attr->mmap = pci_mmap_legacy_mem;
+	} else if (mmap_type == pci_mmap_io) {
+		attr->size = 0xffff;
+		attr->read = pci_read_legacy_io;
+		attr->write = pci_write_legacy_io;
+		attr->mmap = pci_mmap_legacy_io;
+	} else {
+		return 0;
 	}
+
+#ifdef CONFIG_ALPHA
+	attr->size <<= 5;
+#endif
+	attr->f_mapping = iomem_get_mapping;
+
+	return attr->attr.mode;
 }
+
+static LEGACY_BIN_ATTR(legacy_io);
+
+static struct bin_attribute *pci_bus_legacy_io_attrs[] = {
+	&bin_attr_legacy_io,
+	NULL,
+};
+
+static umode_t pci_bus_legacy_io_attr_is_visible(struct kobject *kobj,
+						 struct bin_attribute *a,
+						 int n)
+{
+	return pci_bus_legacy_attr_is_visible(kobj, a, pci_mmap_io);
+}
+
+static const struct attribute_group pci_bus_legacy_io_attr_group = {
+	.bin_attrs = pci_bus_legacy_io_attrs,
+	.is_bin_visible = pci_bus_legacy_io_attr_is_visible,
+};
+
+static LEGACY_BIN_ATTR(legacy_mem);
+
+static struct bin_attribute *pci_bus_legacy_mem_attrs[] = {
+	&bin_attr_legacy_mem,
+	NULL,
+};
+
+static umode_t pci_bus_legacy_mem_attr_is_visible(struct kobject *kobj,
+						  struct bin_attribute *a,
+						  int n)
+{
+	return pci_bus_legacy_attr_is_visible(kobj, a, pci_mmap_mem);
+}
+
+static const struct attribute_group pci_bus_legacy_mem_attr_group = {
+	.bin_attrs = pci_bus_legacy_mem_attrs,
+	.is_bin_visible = pci_bus_legacy_mem_attr_is_visible,
+};
 #endif /* HAVE_PCI_LEGACY */
 
 #if defined(HAVE_PCI_MMAP) || defined(ARCH_GENERIC_PCI_MMAP_RESOURCE)
@@ -1135,112 +1127,167 @@ static ssize_t pci_write_resource_io(struct file *filp, struct kobject *kobj,
 	return pci_resource_io(filp, kobj, attr, buf, off, count, true);
 }
 
-/**
- * pci_remove_resource_files - cleanup resource files
- * @pdev: dev to cleanup
- *
- * If we created resource files for @pdev, remove them from sysfs and
- * free their resources.
- */
-static void pci_remove_resource_files(struct pci_dev *pdev)
+static umode_t pci_dev_resource_attr_is_visible(struct kobject *kobj,
+						struct bin_attribute *attr,
+						int bar, bool write_combine)
 {
-	int i;
+	struct pci_dev *pdev = to_pci_dev(kobj_to_dev(kobj));
+	resource_size_t resource_size = pci_resource_len(pdev, bar);
+	unsigned long flags = pci_resource_flags(pdev, bar);
 
-	for (i = 0; i < PCI_STD_NUM_BARS; i++) {
-		struct bin_attribute *res_attr;
+	if (!resource_size)
+		return 0;
 
-		res_attr = pdev->res_attr[i];
-		if (res_attr) {
-			sysfs_remove_bin_file(&pdev->dev.kobj, res_attr);
-			kfree(res_attr);
-		}
-
-		res_attr = pdev->res_attr_wc[i];
-		if (res_attr) {
-			sysfs_remove_bin_file(&pdev->dev.kobj, res_attr);
-			kfree(res_attr);
-		}
-	}
-}
-
-static int pci_create_attr(struct pci_dev *pdev, int num, int write_combine)
-{
-	/* allocate attribute structure, piggyback attribute name */
-	int name_len = write_combine ? 13 : 10;
-	struct bin_attribute *res_attr;
-	char *res_attr_name;
-	int retval;
-
-	res_attr = kzalloc(sizeof(*res_attr) + name_len, GFP_ATOMIC);
-	if (!res_attr)
-		return -ENOMEM;
-
-	res_attr_name = (char *)(res_attr + 1);
-
-	sysfs_bin_attr_init(res_attr);
 	if (write_combine) {
-		pdev->res_attr_wc[num] = res_attr;
-		sprintf(res_attr_name, "resource%d_wc", num);
-		res_attr->mmap = pci_mmap_resource_wc;
+		if (arch_can_pci_mmap_wc() && (flags &
+		    (IORESOURCE_MEM | IORESOURCE_PREFETCH)) ==
+			(IORESOURCE_MEM | IORESOURCE_PREFETCH))
+			attr->mmap = pci_mmap_resource_wc;
+		else
+			return 0;
 	} else {
-		pdev->res_attr[num] = res_attr;
-		sprintf(res_attr_name, "resource%d", num);
-		if (pci_resource_flags(pdev, num) & IORESOURCE_IO) {
-			res_attr->read = pci_read_resource_io;
-			res_attr->write = pci_write_resource_io;
+		if (flags & IORESOURCE_MEM) {
+			attr->mmap = pci_mmap_resource_uc;
+		} else if (flags & IORESOURCE_IO) {
+			attr->read = pci_read_resource_io;
+			attr->write = pci_write_resource_io;
 			if (arch_can_pci_mmap_io())
-				res_attr->mmap = pci_mmap_resource_uc;
+				attr->mmap = pci_mmap_resource_uc;
 		} else {
-			res_attr->mmap = pci_mmap_resource_uc;
+			return 0;
 		}
 	}
-	if (res_attr->mmap)
-		res_attr->mapping = iomem_get_mapping();
-	res_attr->attr.name = res_attr_name;
-	res_attr->attr.mode = 0600;
-	res_attr->size = pci_resource_len(pdev, num);
-	res_attr->private = (void *)(unsigned long)num;
-	retval = sysfs_create_bin_file(&pdev->dev.kobj, res_attr);
-	if (retval)
-		kfree(res_attr);
 
-	return retval;
+	attr->size = resource_size;
+	if (attr->mmap)
+		attr->f_mapping = iomem_get_mapping;
+
+	attr->private = (void *)(unsigned long)bar;
+
+	return attr->attr.mode;
 }
 
-/**
- * pci_create_resource_files - create resource files in sysfs for @dev
- * @pdev: dev in question
- *
- * Walk the resources in @pdev creating files for each resource available.
- */
-static int pci_create_resource_files(struct pci_dev *pdev)
-{
-	int i;
-	int retval;
-
-	/* Expose the PCI resources from this device as files */
-	for (i = 0; i < PCI_STD_NUM_BARS; i++) {
-
-		/* skip empty resources */
-		if (!pci_resource_len(pdev, i))
-			continue;
-
-		retval = pci_create_attr(pdev, i, 0);
-		/* for prefetchable resources, create a WC mappable file */
-		if (!retval && arch_can_pci_mmap_wc() &&
-		    pdev->resource[i].flags & IORESOURCE_PREFETCH)
-			retval = pci_create_attr(pdev, i, 1);
-		if (retval) {
-			pci_remove_resource_files(pdev);
-			return retval;
-		}
-	}
-	return 0;
+#define pci_dev_resource_attr(_bar)					\
+static struct bin_attribute						\
+pci_dev_resource##_bar##_attr = __BIN_ATTR(resource##_bar,		\
+					   0600, NULL, NULL, 0);	\
+static struct bin_attribute *pci_dev_resource##_bar##_attrs[] = {	\
+	&pci_dev_resource##_bar##_attr,					\
+	NULL,								\
+};									\
+static umode_t								\
+pci_dev_resource##_bar##_attr_is_visible(struct kobject *kobj,		\
+					 struct bin_attribute *a,	\
+					 int n)				\
+{									\
+	return pci_dev_resource_attr_is_visible(kobj, a, _bar, false);	\
+};									\
+static const struct							\
+attribute_group pci_dev_resource##_bar##_attr_group = {			\
+	.bin_attrs = pci_dev_resource##_bar##_attrs,			\
+	.is_bin_visible = pci_dev_resource##_bar##_attr_is_visible,	\
+};									\
+static struct bin_attribute						\
+pci_dev_resource##_bar##_wc_attr = __BIN_ATTR(resource##_bar##_wc,	\
+					      0600, NULL, NULL, 0);	\
+static struct bin_attribute *pci_dev_resource##_bar##_wc_attrs[] = {	\
+	&pci_dev_resource##_bar##_wc_attr,				\
+	NULL,								\
+};									\
+static umode_t								\
+pci_dev_resource##_bar##_wc_attr_is_visible(struct kobject *kobj,	\
+					    struct bin_attribute *a,	\
+					    int n)			\
+{									\
+	return pci_dev_resource_attr_is_visible(kobj, a, _bar, true);	\
+};									\
+static const struct							\
+attribute_group pci_dev_resource##_bar##_wc_attr_group = {		\
+	.bin_attrs = pci_dev_resource##_bar##_wc_attrs,			\
+	.is_bin_visible = pci_dev_resource##_bar##_wc_attr_is_visible,	\
 }
+
+#define pci_dev_resource_group(_bar)		\
+	&pci_dev_resource##_bar##_attr_group,	\
+	&pci_dev_resource##_bar##_wc_attr_group
+
 #else /* !(defined(HAVE_PCI_MMAP) || defined(ARCH_GENERIC_PCI_MMAP_RESOURCE)) */
-int __weak pci_create_resource_files(struct pci_dev *dev) { return 0; }
-void __weak pci_remove_resource_files(struct pci_dev *dev) { return; }
+
+#define pci_dev_resource_attr(_bar)					   \
+static struct bin_attribute						   \
+pci_dev_resource##_bar##_attr = __BIN_ATTR(resource##_bar,		   \
+					   0600, NULL, NULL, 0);	   \
+static struct bin_attribute *pci_dev_resource##_bar##_attrs[] = {	   \
+        &pci_dev_resource##_bar##_attr,					   \
+        NULL,								   \
+};									   \
+static umode_t								   \
+pci_dev_resource##_bar##_attr_is_visible(struct kobject *kobj,		   \
+                                         struct bin_attribute *a,	   \
+					 int n)				   \
+{									   \
+        return pci_dev_resource_attr_is_visible(kobj, a, _bar,		   \
+						PCI_RESOURCE_NORMAL);	   \
+};									   \
+const struct								   \
+attribute_group pci_dev_resource##_bar##_attr_group = {			   \
+        .bin_attrs = pci_dev_resource##_bar##_attrs,			   \
+        .is_bin_visible = pci_dev_resource##_bar##_attr_is_visible,	   \
+};									   \
+static struct bin_attribute						   \
+pci_dev_resource##_bar##_sparse_attr = __BIN_ATTR(resource##_bar##_sparse, \
+						  0600, NULL, NULL, 0);	   \
+static struct bin_attribute *pci_dev_resource##_bar##_sparse_attrs[] = {   \
+        &pci_dev_resource##_bar##_sparse_attr,				   \
+        NULL,								   \
+};									   \
+static umode_t								   \
+pci_dev_resource##_bar##_sparse_attr_is_visible(struct kobject *kobj,	   \
+                                            struct bin_attribute *a,	   \
+					    int n)			   \
+{									   \
+        return pci_dev_resource_attr_is_visible(kobj, a, _bar,		   \
+						PCI_RESOURCE_SPARSE);	   \
+};									   \
+const struct								   \
+attribute_group pci_dev_resource##_bar##_sparse_attr_group = {		   \
+        .bin_attrs = pci_dev_resource##_bar##_sparse_attrs,		   \
+        .is_bin_visible = pci_dev_resource##_bar##_sparse_attr_is_visible, \
+};									   \
+static struct bin_attribute						   \
+pci_dev_resource##_bar##_dense_attr = __BIN_ATTR(resource##_bar##_dense,   \
+						 0600, NULL, NULL, 0);	   \
+static struct bin_attribute *pci_dev_resource##_bar##_dense_attrs[] = {    \
+        &pci_dev_resource##_bar##_dense_attr,				   \
+        NULL,								   \
+};									   \
+static umode_t								   \
+pci_dev_resource##_bar##_dense_attr_is_visible(struct kobject *kobj,	   \
+                                            struct bin_attribute *a,	   \
+					    int n)			   \
+{									   \
+        return pci_dev_resource_attr_is_visible(kobj, a, _bar,		   \
+						PCI_RESOURCE_DENSE);	   \
+};									   \
+const struct								   \
+attribute_group pci_dev_resource##_bar##_dense_attr_group = {		   \
+        .bin_attrs = pci_dev_resource##_bar##_dense_attrs,		   \
+        .is_bin_visible = pci_dev_resource##_bar##_dense_attr_is_visible,  \
+}
+
+#define pci_dev_resource_group(_bar)			\
+	&pci_dev_resource##_bar##_attr_group,		\
+	&pci_dev_resource##_bar##_sparse_attr_group,	\
+	&pci_dev_resource##_bar##_dense_attr_group
+
 #endif
+
+pci_dev_resource_attr(0);
+pci_dev_resource_attr(1);
+pci_dev_resource_attr(2);
+pci_dev_resource_attr(3);
+pci_dev_resource_attr(4);
+pci_dev_resource_attr(5);
 
 /**
  * pci_write_rom - used to enable access to the PCI ROM display
@@ -1378,50 +1425,6 @@ static const struct attribute_group pci_dev_reset_attr_group = {
 	.is_visible = pci_dev_reset_attr_is_visible,
 };
 
-int __must_check pci_create_sysfs_dev_files(struct pci_dev *pdev)
-{
-	if (!sysfs_initialized)
-		return -EACCES;
-
-	return pci_create_resource_files(pdev);
-}
-
-/**
- * pci_remove_sysfs_dev_files - cleanup PCI specific sysfs files
- * @pdev: device whose entries we should free
- *
- * Cleanup when @pdev is removed from sysfs.
- */
-void pci_remove_sysfs_dev_files(struct pci_dev *pdev)
-{
-	if (!sysfs_initialized)
-		return;
-
-	pci_remove_resource_files(pdev);
-}
-
-static int __init pci_sysfs_init(void)
-{
-	struct pci_dev *pdev = NULL;
-	struct pci_bus *pbus = NULL;
-	int retval;
-
-	sysfs_initialized = 1;
-	for_each_pci_dev(pdev) {
-		retval = pci_create_sysfs_dev_files(pdev);
-		if (retval) {
-			pci_dev_put(pdev);
-			return retval;
-		}
-	}
-
-	while ((pbus = pci_find_next_bus(pbus)))
-		pci_create_legacy_files(pbus);
-
-	return 0;
-}
-late_initcall(pci_sysfs_init);
-
 static struct attribute *pci_dev_dev_attrs[] = {
 	&dev_attr_boot_vga.attr,
 	NULL,
@@ -1482,12 +1485,27 @@ static umode_t pcie_dev_attrs_are_visible(struct kobject *kobj,
 	return 0;
 }
 
+const struct attribute_group *pci_bus_groups[] = {
+	&pci_bus_group,
+#ifdef HAVE_PCI_LEGACY
+	&pci_bus_legacy_io_attr_group,
+	&pci_bus_legacy_mem_attr_group,
+#endif
+	NULL,
+};
+
 static const struct attribute_group pci_dev_group = {
 	.attrs = pci_dev_attrs,
 };
 
 const struct attribute_group *pci_dev_groups[] = {
 	&pci_dev_group,
+	pci_dev_resource_group(0),
+	pci_dev_resource_group(1),
+	pci_dev_resource_group(2),
+	pci_dev_resource_group(3),
+	pci_dev_resource_group(4),
+	pci_dev_resource_group(5),
 	&pci_dev_config_attr_group,
 	&pci_dev_rom_attr_group,
 	&pci_dev_reset_attr_group,

@@ -19,8 +19,6 @@ bool pcie_cap_has_rtctl(const struct pci_dev *dev);
 
 /* Functions internal to the PCI core code */
 
-int pci_create_sysfs_dev_files(struct pci_dev *pdev);
-void pci_remove_sysfs_dev_files(struct pci_dev *pdev);
 void pci_cleanup_rom(struct pci_dev *dev);
 #ifdef CONFIG_DMI
 extern const struct attribute_group pci_dev_smbios_attr_group;
@@ -157,14 +155,6 @@ static inline int pci_proc_detach_bus(struct pci_bus *bus) { return 0; }
 
 /* Functions for PCI Hotplug drivers to use */
 int pci_hp_add_bridge(struct pci_dev *dev);
-
-#ifdef HAVE_PCI_LEGACY
-void pci_create_legacy_files(struct pci_bus *bus);
-void pci_remove_legacy_files(struct pci_bus *bus);
-#else
-static inline void pci_create_legacy_files(struct pci_bus *bus) { return; }
-static inline void pci_remove_legacy_files(struct pci_bus *bus) { return; }
-#endif
 
 /* Lock for read/write access to pci device and bus lists */
 extern struct rw_semaphore pci_bus_sem;
