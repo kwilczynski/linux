@@ -1135,12 +1135,98 @@ static ssize_t pci_write_resource_io(struct file *filp, struct kobject *kobj,
 	return pci_resource_io(filp, kobj, attr, buf, off, count, true);
 }
 
-static int pci_create_resource_files(struct pci_dev *pdev) { return 0; }
-static void pci_remove_resource_files(struct pci_dev *pdev) { return; }
-#else /* !(defined(HAVE_PCI_MMAP) || defined(ARCH_GENERIC_PCI_MMAP_RESOURCE)) */
-int __weak pci_create_resource_files(struct pci_dev *dev) { return 0; }
-void __weak pci_remove_resource_files(struct pci_dev *dev) { return; }
-#endif
+static umode_t pci_dev_resource_attr_is_visible(struct kobject *kobj,
+						struct bin_attribute *attr,
+						int bar, bool write_combine)
+{
+	struct pci_dev *pdev = to_pci_dev(kobj_to_dev(kobj));
+	resource_size_t resource_size = pci_resource_len(pdev, bar);
+	unsigned long flags = pci_resource_flags(pdev, bar);
+
+	if (!resource_size)
+		return 0;
+
+	if (write_combine) {
+		if (arch_can_pci_mmap_wc() && (flags &
+		    (IORESOURCE_MEM | IORESOURCE_PREFETCH)) ==
+			(IORESOURCE_MEM | IORESOURCE_PREFETCH))
+			attr->mmap = pci_mmap_resource_wc;
+		else
+			return 0;
+	} else {
+		if (flags & IORESOURCE_MEM) {
+			attr->mmap = pci_mmap_resource_uc;
+		} else if (flags & IORESOURCE_IO) {
+			attr->read = pci_read_resource_io;
+			attr->write = pci_write_resource_io;
+			if (arch_can_pci_mmap_io())
+				attr->mmap = pci_mmap_resource_uc;
+		} else {
+			return 0;
+		}
+	}
+
+	attr->size = resource_size;
+	attr->private = (void *)(unsigned long)bar;
+	if (attr->mmap)
+		attr->f_mapping = iomem_get_mapping;
+
+	return attr->attr.mode;
+}
+
+#define pci_dev_resource_attr(_bar)					\
+static struct bin_attribute						\
+pci_dev_resource##_bar##_attr = __BIN_ATTR(resource##_bar,		\
+					   0600, NULL, NULL, 0);	\
+static struct bin_attribute *pci_dev_resource##_bar##_attrs[] = {	\
+	&pci_dev_resource##_bar##_attr,					\
+	NULL,								\
+};									\
+static umode_t								\
+pci_dev_resource##_bar##_attr_is_visible(struct kobject *kobj,		\
+					 struct bin_attribute *a,	\
+					 int n)				\
+{									\
+	return pci_dev_resource_attr_is_visible(kobj, a, _bar, false);	\
+};									\
+static const struct							\
+attribute_group pci_dev_resource##_bar##_attr_group = {			\
+	.bin_attrs = pci_dev_resource##_bar##_attrs,			\
+	.is_bin_visible = pci_dev_resource##_bar##_attr_is_visible,	\
+};									\
+static struct bin_attribute						\
+pci_dev_resource##_bar##_wc_attr = __BIN_ATTR(resource##_bar##_wc,	\
+					      0600, NULL, NULL, 0);	\
+static struct bin_attribute *pci_dev_resource##_bar##_wc_attrs[] = {	\
+	&pci_dev_resource##_bar##_wc_attr,				\
+	NULL,								\
+};									\
+static umode_t								\
+pci_dev_resource##_bar##_wc_attr_is_visible(struct kobject *kobj,	\
+					    struct bin_attribute *a,	\
+					    int n)			\
+{									\
+	return pci_dev_resource_attr_is_visible(kobj, a, _bar, true);	\
+};									\
+static const struct							\
+attribute_group pci_dev_resource##_bar##_wc_attr_group = {		\
+	.bin_attrs = pci_dev_resource##_bar##_wc_attrs,			\
+	.is_bin_visible = pci_dev_resource##_bar##_wc_attr_is_visible,	\
+}
+
+#define pci_dev_resource_group(_bar)		\
+	&pci_dev_resource##_bar##_attr_group,	\
+	&pci_dev_resource##_bar##_wc_attr_group
+
+#else
+#endif /* defined(HAVE_PCI_MMAP) || defined(ARCH_GENERIC_PCI_MMAP_RESOURCE) */
+
+pci_dev_resource_attr(0);
+pci_dev_resource_attr(1);
+pci_dev_resource_attr(2);
+pci_dev_resource_attr(3);
+pci_dev_resource_attr(4);
+pci_dev_resource_attr(5);
 
 /**
  * pci_write_rom - used to enable access to the PCI ROM display
@@ -1278,43 +1364,11 @@ static const struct attribute_group pci_dev_reset_attr_group = {
 	.is_visible = pci_dev_reset_attr_is_visible,
 };
 
-int __must_check pci_create_sysfs_dev_files(struct pci_dev *pdev)
-{
-	if (!sysfs_initialized)
-		return -EACCES;
-
-	return pci_create_resource_files(pdev);
-}
-
-/**
- * pci_remove_sysfs_dev_files - cleanup PCI specific sysfs files
- * @pdev: device whose entries we should free
- *
- * Cleanup when @pdev is removed from sysfs.
- */
-void pci_remove_sysfs_dev_files(struct pci_dev *pdev)
-{
-	if (!sysfs_initialized)
-		return;
-
-	pci_remove_resource_files(pdev);
-}
-
 static int __init pci_sysfs_init(void)
 {
-	struct pci_dev *pdev = NULL;
 	struct pci_bus *pbus = NULL;
-	int retval;
 
 	sysfs_initialized = 1;
-	for_each_pci_dev(pdev) {
-		retval = pci_create_sysfs_dev_files(pdev);
-		if (retval) {
-			pci_dev_put(pdev);
-			return retval;
-		}
-	}
-
 	while ((pbus = pci_find_next_bus(pbus)))
 		pci_create_legacy_files(pbus);
 
@@ -1388,6 +1442,12 @@ static const struct attribute_group pci_dev_group = {
 
 const struct attribute_group *pci_dev_groups[] = {
 	&pci_dev_group,
+	pci_dev_resource_group(0),
+	pci_dev_resource_group(1),
+	pci_dev_resource_group(2),
+	pci_dev_resource_group(3),
+	pci_dev_resource_group(4),
+	pci_dev_resource_group(5),
 	&pci_dev_config_attr_group,
 	&pci_dev_rom_attr_group,
 	&pci_dev_reset_attr_group,
