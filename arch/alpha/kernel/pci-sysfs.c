@@ -39,6 +39,9 @@ static int __pci_mmap_fits(struct pci_dev *pdev, int num,
 	unsigned long nr, start, size;
 	int shift = sparse ? 5 : 0;
 
+	if (pci_resource_len(pdev, num) == 0)
+		return 0;
+
 	nr = vma_pages(vma);
 	start = vma->vm_pgoff;
 	size = ((pci_resource_len(pdev, num) - 1) >> (PAGE_SHIFT - shift)) + 1;
