@@ -69,8 +69,8 @@ static int pci_mmap_resource(struct kobject *kobj,
 	int barno = (unsigned long)attr->private;
 	enum pci_mmap_state mmap_type;
 	struct pci_bus_region bar;
-	int ret;
 	struct resource *res = &pdev->resource[barno];
+	int ret, shift = sparse ? 5 : 0;
 	
 	ret = security_locked_down(LOCKDOWN_PCI_ACCESS);
 	if (ret)
@@ -83,7 +83,7 @@ static int pci_mmap_resource(struct kobject *kobj,
 		return -EINVAL;
 
 	pcibios_resource_to_bus(pdev->bus, &bar, res);
-	vma->vm_pgoff += bar.start >> (PAGE_SHIFT - (sparse ? 5 : 0));
+	vma->vm_pgoff += bar.start >> (PAGE_SHIFT - shift);
 	mmap_type = res->flags & IORESOURCE_MEM ? pci_mmap_mem : pci_mmap_io;
 
 	return hose_mmap_page_range(pdev->sysdata, vma, mmap_type, sparse);
