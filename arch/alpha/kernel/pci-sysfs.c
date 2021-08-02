@@ -14,6 +14,7 @@
 #include <linux/stat.h>
 #include <linux/slab.h>
 #include <linux/pci.h>
+#include <linux/security.h>
 
 static int hose_mmap_page_range(struct pci_controller *hose,
 				struct vm_area_struct *vma,
@@ -68,7 +69,11 @@ static int pci_mmap_resource(struct kobject *kobj,
 	struct resource *res = attr->private;
 	enum pci_mmap_state mmap_type;
 	struct pci_bus_region bar;
-	int i;
+	int i, ret;
+	
+	ret = security_locked_down(LOCKDOWN_PCI_ACCESS);
+	if (ret)
+		return ret;
 
 	for (i = 0; i < PCI_STD_NUM_BARS; i++)
 		if (res == &pdev->resource[i])
