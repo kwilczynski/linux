@@ -34,7 +34,7 @@ static int hose_mmap_page_range(struct pci_controller *hose,
 				  vma->vm_page_prot);
 }
 
-static int __pci_mmap_fits(struct pci_dev *pdev, int num,
+static int pci_mmap_fits(struct pci_dev *pdev, int num,
 			   struct vm_area_struct *vma, int sparse)
 {
 	unsigned long nr, start, size;
@@ -79,7 +79,7 @@ static int pci_mmap_resource(struct kobject *kobj,
 	if (res->flags & IORESOURCE_MEM && iomem_is_exclusive(res->start))
 		return -EINVAL;
 
-	if (!__pci_mmap_fits(pdev, barno, vma, sparse))
+	if (!pci_mmap_fits(pdev, barno, vma, sparse))
 		return -EINVAL;
 
 	pcibios_resource_to_bus(pdev->bus, &bar, res);
