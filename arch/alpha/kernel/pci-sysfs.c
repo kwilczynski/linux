@@ -104,34 +104,6 @@ static int pci_mmap_resource_dense(struct file *filp, struct kobject *kobj,
 	return pci_mmap_resource(kobj, attr, vma, 0);
 }
 
-/**
- * pci_remove_resource_files - cleanup resource files
- * @dev: dev to cleanup
- *
- * If we created resource files for @dev, remove them from sysfs and
- * free their resources.
- */
-void pci_remove_resource_files(struct pci_dev *pdev)
-{
-	int i;
-
-	for (i = 0; i < PCI_STD_NUM_BARS; i++) {
-		struct bin_attribute *res_attr;
-
-		res_attr = pdev->res_attr[i];
-		if (res_attr) {
-			sysfs_remove_bin_file(&pdev->dev.kobj, res_attr);
-			kfree(res_attr);
-		}
-
-		res_attr = pdev->res_attr_wc[i];
-		if (res_attr) {
-			sysfs_remove_bin_file(&pdev->dev.kobj, res_attr);
-			kfree(res_attr);
-		}
-	}
-}
-
 static int sparse_mem_mmap_fits(struct pci_dev *pdev, int num)
 {
 	struct pci_bus_region bar;
@@ -151,102 +123,58 @@ static int sparse_mem_mmap_fits(struct pci_dev *pdev, int num)
 	return bar.end < sparse_size;
 }
 
-static int pci_create_one_attr(struct pci_dev *pdev, int num, char *name,
-			       char *suffix, struct bin_attribute *res_attr,
-			       unsigned long sparse)
+umode_t pci_dev_resource_attr_is_visible(struct kobject *kobj,
+						struct bin_attribute *attr,
+						int bar,
+						enum pci_resource_type type)
 {
-	size_t size = pci_resource_len(pdev, num);
-
-	sprintf(name, "resource%d%s", num, suffix);
-	res_attr->mmap = sparse ? pci_mmap_resource_sparse :
-				  pci_mmap_resource_dense;
-	res_attr->attr.name = name;
-	res_attr->attr.mode = S_IRUSR | S_IWUSR;
-	res_attr->size = sparse ? size << 5 : size;
-	res_attr->private = &pdev->resource[num];
-	return sysfs_create_bin_file(&pdev->dev.kobj, res_attr);
-}
-
-static int pci_create_attr(struct pci_dev *pdev, int num)
-{
-	/* allocate attribute structure, piggyback attribute name */
-	int retval, nlen1, nlen2 = 0, res_count = 1;
-	unsigned long sparse_base, dense_base;
-	struct bin_attribute *attr;
+	struct pci_dev *pdev = to_pci_dev(kobj_to_dev(kobj));
 	struct pci_controller *hose = pdev->sysdata;
-	char *suffix, *attr_name;
+	resource_size_t resource_size = pci_resource_len(pdev, bar);
+	unsigned long flags = pci_resource_flags(pdev, bar);
+	enum pci_resource_type resource_type = PCI_RESOURCE_NORMAL;
+	unsigned long sparse_base, dense_base;
 
-	suffix = "";	/* Assume bwx machine, normal resourceN files. */
-	nlen1 = 10;
+	if (!resource_size)
+		return 0;
 
-	if (pdev->resource[num].flags & IORESOURCE_MEM) {
+	if (flags & IORESOURCE_MEM) {
 		sparse_base = hose->sparse_mem_base;
 		dense_base = hose->dense_mem_base;
-		if (sparse_base && !sparse_mem_mmap_fits(pdev, num)) {
+		if (sparse_base && !sparse_mem_mmap_fits(pdev, bar)) {
 			sparse_base = 0;
-			suffix = "_dense";
-			nlen1 = 16;	/* resourceN_dense */
+			resource_type = PCI_RESOURCE_DENSE;
 		}
-	} else {
+	} else if (flags & IORESOURCE_IO) {
 		sparse_base = hose->sparse_io_base;
 		dense_base = hose->dense_io_base;
+	} else {
+		return 0;
 	}
 
 	if (sparse_base) {
-		suffix = "_sparse";
-		nlen1 = 17;
-		if (dense_base) {
-			nlen2 = 16;	/* resourceN_dense */
-			res_count = 2;
-		}
+		resource_type = PCI_RESOURCE_SPARSE;
+		if (dense_base)
+			resource_type |= PCI_RESOURCE_DENSE;
 	}
 
-	attr = kzalloc(sizeof(*attr) * res_count + nlen1 + nlen2, GFP_ATOMIC);
-	if (!attr)
-		return -ENOMEM;
+	if (!(resource_type & type))
+		return 0;
 
-	/* Create bwx, sparse or single dense file */
-	attr_name = (char *)(attr + res_count);
-	pdev->res_attr[num] = attr;
-	retval = pci_create_one_attr(pdev, num, attr_name, suffix, attr,
-				     sparse_base);
-	if (retval || res_count == 1)
-		return retval;
+	attr->size = resource_size;
+	attr->mmap = pci_mmap_resource_dense;
 
-	/* Create dense file */
-	attr_name += nlen1;
-	attr++;
-	pdev->res_attr_wc[num] = attr;
-	return pci_create_one_attr(pdev, num, attr_name, "_dense", attr, 0);
-}
-
-/**
- * pci_create_resource_files - create resource files in sysfs for @dev
- * @dev: dev in question
- *
- * Walk the resources in @dev creating files for each resource available.
- */
-int pci_create_resource_files(struct pci_dev *pdev)
-{
-	int i;
-	int retval;
-
-	/* Expose the PCI resources from this device as files */
-	for (i = 0; i < PCI_STD_NUM_BARS; i++) {
-
-		/* skip empty resources */
-		if (!pci_resource_len(pdev, i))
-			continue;
-
-		retval = pci_create_attr(pdev, i);
-		if (retval) {
-			pci_remove_resource_files(pdev);
-			return retval;
-		}
+	if (resource_type & PCI_RESOURCE_SPARSE) {
+		attr->size = resource_size << 5;
+		attr->mmap = pci_mmap_resource_sparse;
 	}
-	return 0;
+
+	attr->private = &pdev->resource[bar];
+
+	return attr->attr.mode;
 }
 
+#ifdef HAVE_PCI_LEGACY
 /* Legacy I/O bus mapping stuff. */
 
 static int __legacy_mmap_fits(struct pci_controller *hose,
@@ -366,3 +294,4 @@ int pci_legacy_write(struct pci_bus *bus, loff_t port, u32 val, size_t size)
 	}
 	return -EINVAL;
 }
+#endif /* HAVE_PCI_LEGACY */

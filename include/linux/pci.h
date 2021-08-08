@@ -2450,6 +2450,19 @@ static inline bool pci_is_thunderbolt_attached(struct pci_dev *pdev)
 void pci_uevent_ers(struct pci_dev *pdev, enum  pci_ers_result err_type);
 #endif
 
+#if !(defined(HAVE_PCI_MMAP) || defined(ARCH_GENERIC_PCI_MMAP_RESOURCE))
+enum pci_resource_type {
+	PCI_RESOURCE_NORMAL	= BIT(0),
+	PCI_RESOURCE_SPARSE	= BIT(1),
+	PCI_RESOURCE_DENSE	= BIT(2),
+};
+
+extern umode_t pci_dev_resource_attr_is_visible(struct kobject *kobj,
+						struct bin_attribute *attr,
+						int bar,
+						enum pci_resource_type type);
+#endif
+
 /* Provide the legacy pci_dma_* API */
 #include <linux/pci-dma-compat.h>
 
