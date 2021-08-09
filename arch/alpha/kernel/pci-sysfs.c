@@ -14,6 +14,7 @@
 #include <linux/stat.h>
 #include <linux/slab.h>
 #include <linux/pci.h>
+#include <linux/security.h>
 
 static int hose_mmap_page_range(struct pci_controller *hose,
 				struct vm_area_struct *vma,
@@ -38,6 +39,9 @@ static int __pci_mmap_fits(struct pci_dev *pdev, int num,
 {
 	unsigned long nr, start, size;
 	int shift = sparse ? 5 : 0;
+
+	if (pci_resource_len(pdev, num) == 0)
+		return 0;
 
 	nr = vma_pages(vma);
 	start = vma->vm_pgoff;
@@ -66,21 +70,20 @@ static int pci_mmap_resource(struct kobject *kobj,
 			     struct vm_area_struct *vma, int sparse)
 {
 	struct pci_dev *pdev = to_pci_dev(kobj_to_dev(kobj));
-	struct resource *res = attr->private;
+	int barno = (unsigned long)attr->private;
+	struct resource *res = &pdev->resource[barno];
 	enum pci_mmap_state mmap_type;
 	struct pci_bus_region bar;
-	int i;
+	int ret;
 
-	for (i = 0; i < PCI_STD_NUM_BARS; i++)
-		if (res == &pdev->resource[i])
-			break;
-	if (i >= PCI_STD_NUM_BARS)
-		return -ENODEV;
+	ret = security_locked_down(LOCKDOWN_PCI_ACCESS);
+	if (ret)
+		return ret;
 
 	if (res->flags & IORESOURCE_MEM && iomem_is_exclusive(res->start))
 		return -EINVAL;
 
-	if (!__pci_mmap_fits(pdev, i, vma, sparse))
+	if (!__pci_mmap_fits(pdev, barno, vma, sparse))
 		return -EINVAL;
 
 	pcibios_resource_to_bus(pdev->bus, &bar, res);
@@ -169,7 +172,7 @@ umode_t pci_dev_resource_attr_is_visible(struct kobject *kobj,
 		attr->mmap = pci_mmap_resource_sparse;
 	}
 
-	attr->private = &pdev->resource[bar];
+	attr->private = (void *)(unsigned long)bar;
 
 	return attr->attr.mode;
 }
