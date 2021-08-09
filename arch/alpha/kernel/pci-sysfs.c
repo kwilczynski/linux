@@ -199,8 +199,8 @@ static int __legacy_mmap_fits(struct pci_controller *hose,
 	return 0;
 }
 
-static inline int has_sparse(struct pci_controller *hose,
-			     enum pci_mmap_state mmap_type)
+inline int has_sparse(struct pci_controller *hose,
+		      enum pci_mmap_state mmap_type)
 {
 	unsigned long base;
 
@@ -223,30 +223,6 @@ int pci_mmap_legacy_page_range(struct pci_bus *bus, struct vm_area_struct *vma,
 		return -EINVAL;
 
 	return hose_mmap_page_range(hose, vma, mmap_type, sparse);
-}
-
-/**
- * pci_adjust_legacy_attr - adjustment of legacy file attributes
- * @b: bus to create files under
- * @mmap_type: I/O port or memory
- *
- * Adjust file name and size for sparse mappings.
- */
-void pci_adjust_legacy_attr(struct pci_bus *bus, enum pci_mmap_state mmap_type)
-{
-	struct pci_controller *hose = bus->sysdata;
-
-	if (!has_sparse(hose, mmap_type))
-		return;
-
-	if (mmap_type == pci_mmap_mem) {
-		bus->legacy_mem->attr.name = "legacy_mem_sparse";
-		bus->legacy_mem->size <<= 5;
-	} else {
-		bus->legacy_io->attr.name = "legacy_io_sparse";
-		bus->legacy_io->size <<= 5;
-	}
-	return;
 }
 
 /* Legacy I/O bus read/write functions */

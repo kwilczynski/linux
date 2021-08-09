@@ -432,11 +432,6 @@ static const struct attribute_group pci_bus_group = {
 	.attrs = pci_bus_attrs,
 };
 
-const struct attribute_group *pci_bus_groups[] = {
-	&pci_bus_group,
-	NULL,
-};
-
 static ssize_t dev_rescan_store(struct device *dev,
 				struct device_attribute *attr, const char *buf,
 				size_t count)
@@ -920,6 +915,86 @@ static int pci_mmap_legacy_io(struct file *filp, struct kobject *kobj,
 
 	return pci_mmap_legacy_page_range(bus, vma, pci_mmap_io);
 }
+
+
+#ifdef CONFIG_ALPHA
+#define LEGACY_BIN_ATTR(_name) \
+	BIN_ATTR(_name, 0600, NULL, NULL, 0)
+#else
+#define LEGACY_BIN_ATTR(_name) \
+	BIN_ATTR(#_name#_sparse, 0600, NULL, NULL, 0)
+#endif
+
+static umode_t pci_bus_legacy_attr_is_visible(struct kobject *kobj,
+					      struct bin_attribute *attr,
+					      enum pci_mmap_state mmap_type)
+{
+
+#ifdef CONFIG_ALPHA
+	struct pci_bus *bus = to_pci_bus(kobj_to_dev(kobj));
+	struct pci_controller *hose = bus->sysdata;
+
+	if (!has_sparse(hose, mmap_type))
+		return 0;
+#endif
+
+	if (mmap_type == pci_mmap_mem) {
+		attr->size = 0x100000;
+		attr->mmap = pci_mmap_legacy_mem;
+	} else if (mmap_type == pci_mmap_io) {
+		attr->size = 0xffff;
+		attr->read = pci_read_legacy_io;
+		attr->write = pci_write_legacy_io;
+		attr->mmap = pci_mmap_legacy_io;
+	} else {
+		return 0;
+	}
+
+#ifdef CONFIG_ALPHA
+	attr->size <<= 5;
+#endif
+	attr->f_mapping = iomem_get_mapping;
+
+	return attr->attr.mode;
+}
+
+static LEGACY_BIN_ATTR(legacy_io);
+
+static struct bin_attribute *pci_bus_legacy_io_attrs[] = {
+	&bin_attr_legacy_io,
+	NULL,
+};
+
+static umode_t pci_bus_legacy_io_attr_is_visible(struct kobject *kobj,
+						 struct bin_attribute *a,
+						 int n)
+{
+	return pci_bus_legacy_attr_is_visible(kobj, a, pci_mmap_io);
+}
+
+static const struct attribute_group pci_bus_legacy_io_attr_group = {
+	.bin_attrs = pci_bus_legacy_io_attrs,
+	.is_bin_visible = pci_bus_legacy_io_attr_is_visible,
+};
+
+static LEGACY_BIN_ATTR(legacy_mem);
+
+static struct bin_attribute *pci_bus_legacy_mem_attrs[] = {
+	&bin_attr_legacy_mem,
+	NULL,
+};
+
+static umode_t pci_bus_legacy_mem_attr_is_visible(struct kobject *kobj,
+						  struct bin_attribute *a,
+						  int n)
+{
+	return pci_bus_legacy_attr_is_visible(kobj, a, pci_mmap_mem);
+}
+
+static const struct attribute_group pci_bus_legacy_mem_attr_group = {
+	.bin_attrs = pci_bus_legacy_mem_attrs,
+	.is_bin_visible = pci_bus_legacy_mem_attr_is_visible,
+};
 #endif /* HAVE_PCI_LEGACY */
 
 #if defined(HAVE_PCI_MMAP) || defined(ARCH_GENERIC_PCI_MMAP_RESOURCE)
@@ -1409,6 +1484,15 @@ static umode_t pcie_dev_attrs_are_visible(struct kobject *kobj,
 
 	return 0;
 }
+
+const struct attribute_group *pci_bus_groups[] = {
+	&pci_bus_group,
+#ifdef HAVE_PCI_LEGACY
+	&pci_bus_legacy_io_attr_group,
+	&pci_bus_legacy_mem_attr_group,
+#endif
+	NULL,
+};
 
 static const struct attribute_group pci_dev_group = {
 	.attrs = pci_dev_attrs,

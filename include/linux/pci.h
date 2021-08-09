@@ -1837,6 +1837,23 @@ pci_alloc_irq_vectors(struct pci_dev *dev, unsigned int min_vecs,
 
 #include <asm/pci.h>
 
+#if defined(HAVE_PCI_LEGACY) && defined(CONFIG_ALPHA)
+int has_sparse(struct pci_controller *hose, enum pci_mmap_state mmap_type);
+#endif
+
+#if !(defined(HAVE_PCI_MMAP) || defined(ARCH_GENERIC_PCI_MMAP_RESOURCE))
+enum pci_resource_type {
+	PCI_RESOURCE_NORMAL	= BIT(0),
+	PCI_RESOURCE_SPARSE	= BIT(1),
+	PCI_RESOURCE_DENSE	= BIT(2),
+};
+
+extern umode_t pci_dev_resource_attr_is_visible(struct kobject *kobj,
+						struct bin_attribute *attr,
+						int bar,
+						enum pci_resource_type type);
+#endif
+
 /* These two functions provide almost identical functionality. Depending
  * on the architecture, one will be implemented as a wrapper around the
  * other (in drivers/pci/mmap.c).
@@ -2448,19 +2465,6 @@ static inline bool pci_is_thunderbolt_attached(struct pci_dev *pdev)
 
 #if defined(CONFIG_PCIEPORTBUS) || defined(CONFIG_EEH)
 void pci_uevent_ers(struct pci_dev *pdev, enum  pci_ers_result err_type);
-#endif
-
-#if !(defined(HAVE_PCI_MMAP) || defined(ARCH_GENERIC_PCI_MMAP_RESOURCE))
-enum pci_resource_type {
-	PCI_RESOURCE_NORMAL	= BIT(0),
-	PCI_RESOURCE_SPARSE	= BIT(1),
-	PCI_RESOURCE_DENSE	= BIT(2),
-};
-
-extern umode_t pci_dev_resource_attr_is_visible(struct kobject *kobj,
-						struct bin_attribute *attr,
-						int bar,
-						enum pci_resource_type type);
 #endif
 
 /* Provide the legacy pci_dma_* API */
