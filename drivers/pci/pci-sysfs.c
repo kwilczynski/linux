@@ -1135,6 +1135,46 @@ static ssize_t pci_write_resource_io(struct file *filp, struct kobject *kobj,
 	return pci_resource_io(filp, kobj, attr, buf, off, count, true);
 }
 
+static umode_t pci_dev_resource_attr_is_visible(struct kobject *kobj,
+						struct bin_attribute *attr,
+						int bar, bool write_combine)
+{
+	struct pci_dev *pdev = to_pci_dev(kobj_to_dev(kobj));
+	resource_size_t resource_size = pci_resource_len(pdev, bar);
+	unsigned long flags = pci_resource_flags(pdev, bar);
+
+	if (!resource_size)
+		return 0;
+
+	if (write_combine) {
+		if (arch_can_pci_mmap_wc() && (flags &
+		    (IORESOURCE_MEM | IORESOURCE_PREFETCH)) ==
+			(IORESOURCE_MEM | IORESOURCE_PREFETCH))
+			attr->mmap = pci_mmap_resource_wc;
+		else
+			return 0;
+	} else {
+		if (flags & IORESOURCE_MEM) {
+			attr->mmap = pci_mmap_resource_uc;
+		} else if (flags & IORESOURCE_IO) {
+			attr->read = pci_read_resource_io;
+			attr->write = pci_write_resource_io;
+			if (arch_can_pci_mmap_io())
+				attr->mmap = pci_mmap_resource_uc;
+		} else {
+			return 0;
+		}
+	}
+
+	attr->size = resource_size;
+	if (attr->mmap)
+		attr->f_mapping = iomem_get_mapping;
+
+	attr->private = (void *)(unsigned long)bar;
+
+	return attr->attr.mode;
+}
+
 /**
  * pci_remove_resource_files - cleanup resource files
  * @pdev: dev to cleanup
