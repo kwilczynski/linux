@@ -1222,6 +1222,11 @@ attribute_group pci_dev_resource##_bar##_wc_attr_group = {		\
 	.is_bin_visible = pci_dev_resource##_bar##_wc_attr_is_visible,	\
 }
 
+#undef pci_dev_resource_group
+#define pci_dev_resource_group(_bar)		\
+	&pci_dev_resource##_bar##_attr_group,	\
+	&pci_dev_resource##_bar##_wc_attr_group
+
 /**
  * pci_remove_resource_files - cleanup resource files
  * @pdev: dev to cleanup
