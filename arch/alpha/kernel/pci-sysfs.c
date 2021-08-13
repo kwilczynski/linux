@@ -304,6 +304,68 @@ static umode_t pci_dev_resource_attr_is_visible(struct kobject *kobj,
 	return attr->attr.mode;
 }
 
+#define pci_dev_resource_attr(_bar)					   \
+static struct bin_attribute						   \
+pci_dev_resource##_bar##_attr = __BIN_ATTR(resource##_bar,		   \
+					   0600, NULL, NULL, 0);	   \
+static struct bin_attribute *pci_dev_resource##_bar##_attrs[] = {	   \
+        &pci_dev_resource##_bar##_attr,					   \
+        NULL,								   \
+};									   \
+static umode_t								   \
+pci_dev_resource##_bar##_attr_is_visible(struct kobject *kobj,		   \
+                                         struct bin_attribute *a,	   \
+					 int n)				   \
+{									   \
+        return pci_dev_resource_attr_is_visible(kobj, a, _bar,		   \
+						PCI_RESOURCE_NORMAL);	   \
+};									   \
+const struct								   \
+attribute_group pci_dev_resource##_bar##_attr_group = {			   \
+        .bin_attrs = pci_dev_resource##_bar##_attrs,			   \
+        .is_bin_visible = pci_dev_resource##_bar##_attr_is_visible,	   \
+};									   \
+static struct bin_attribute						   \
+pci_dev_resource##_bar##_sparse_attr = __BIN_ATTR(resource##_bar##_sparse, \
+						  0600, NULL, NULL, 0);	   \
+static struct bin_attribute *pci_dev_resource##_bar##_sparse_attrs[] = {   \
+        &pci_dev_resource##_bar##_sparse_attr,				   \
+        NULL,								   \
+};									   \
+static umode_t								   \
+pci_dev_resource##_bar##_sparse_attr_is_visible(struct kobject *kobj,	   \
+                                            struct bin_attribute *a,	   \
+					    int n)			   \
+{									   \
+        return pci_dev_resource_attr_is_visible(kobj, a, _bar,		   \
+						PCI_RESOURCE_SPARSE);	   \
+};									   \
+const struct								   \
+attribute_group pci_dev_resource##_bar##_sparse_attr_group = {		   \
+        .bin_attrs = pci_dev_resource##_bar##_sparse_attrs,		   \
+        .is_bin_visible = pci_dev_resource##_bar##_sparse_attr_is_visible, \
+};									   \
+static struct bin_attribute						   \
+pci_dev_resource##_bar##_dense_attr = __BIN_ATTR(resource##_bar##_dense,   \
+						 0600, NULL, NULL, 0);	   \
+static struct bin_attribute *pci_dev_resource##_bar##_dense_attrs[] = {    \
+        &pci_dev_resource##_bar##_dense_attr,				   \
+        NULL,								   \
+};									   \
+static umode_t								   \
+pci_dev_resource##_bar##_dense_attr_is_visible(struct kobject *kobj,	   \
+                                            struct bin_attribute *a,	   \
+					    int n)			   \
+{									   \
+        return pci_dev_resource_attr_is_visible(kobj, a, _bar,		   \
+						PCI_RESOURCE_DENSE);	   \
+};									   \
+const struct								   \
+attribute_group pci_dev_resource##_bar##_dense_attr_group = {		   \
+        .bin_attrs = pci_dev_resource##_bar##_dense_attrs,		   \
+        .is_bin_visible = pci_dev_resource##_bar##_dense_attr_is_visible,  \
+}
+
 /* Legacy I/O bus mapping stuff. */
 
 static int __legacy_mmap_fits(struct pci_controller *hose,
