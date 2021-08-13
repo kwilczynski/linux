@@ -123,22 +123,15 @@ static int sparse_mem_mmap_fits(struct pci_dev *pdev, int num)
 	return bar.end < sparse_size;
 }
 
-enum pci_resource_type {
-	PCI_RESOURCE_NORMAL	= BIT(0),
-	PCI_RESOURCE_SPARSE	= BIT(1),
-	PCI_RESOURCE_DENSE	= BIT(2),
-};
-
 static umode_t pci_dev_resource_attr_is_visible(struct kobject *kobj,
 						struct bin_attribute *attr,
-						int bar,
-						enum pci_resource_type type)
+						int bar, unsigned int type)
 {
 	struct pci_dev *pdev = to_pci_dev(kobj_to_dev(kobj));
 	struct pci_controller *hose = pdev->sysdata;
 	resource_size_t resource_size = pci_resource_len(pdev, bar);
 	unsigned long flags = pci_resource_flags(pdev, bar);
-	enum pci_resource_type resource_type = PCI_RESOURCE_NORMAL;
+	unsigned int resource_type = PCI_RESOURCE_NORMAL;
 	unsigned long sparse_base, dense_base;
 
 	if (!resource_size)
