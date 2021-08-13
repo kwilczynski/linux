@@ -104,17 +104,6 @@ static int pci_mmap_resource_dense(struct file *filp, struct kobject *kobj,
 	return pci_mmap_resource(kobj, attr, vma, 0);
 }
 
-/**
- * pci_remove_resource_files - cleanup resource files
- * @dev: dev to cleanup
- *
- * If we created resource files for @dev, remove them from sysfs and
- * free their resources.
- */
-void pci_remove_resource_files(struct pci_dev *pdev)
-{
-}
-
 static int sparse_mem_mmap_fits(struct pci_dev *pdev, int num)
 {
 	struct pci_bus_region bar;
@@ -132,17 +121,6 @@ static int sparse_mem_mmap_fits(struct pci_dev *pdev, int num)
 	sparse_size = dense_offset >= 0x400000000UL ? 0x20000000 : 0x8000000;
 
 	return bar.end < sparse_size;
-}
-
-/**
- * pci_create_resource_files - create resource files in sysfs for @dev
- * @dev: dev in question
- *
- * Walk the resources in @dev creating files for each resource available.
- */
-int pci_create_resource_files(struct pci_dev *pdev)
-{
-	return 0;
 }
 
 enum pci_resource_type {
