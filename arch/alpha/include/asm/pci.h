@@ -94,6 +94,10 @@ extern void pci_adjust_legacy_attr(struct pci_bus *bus,
 				   enum pci_mmap_state mmap_type);
 #define HAVE_PCI_LEGACY	1
 
+#define PCI_RESOURCE_NORMAL	BIT(0)
+#define PCI_RESOURCE_SPARSE	BIT(1)
+#define PCI_RESOURCE_DENSE	BIT(2)
+
 #define pci_dev_resource_group_export(_bar)						\
 	extern const struct attribute_group pci_dev_resource##_bar##_attr_group;	\
 	extern const struct attribute_group pci_dev_resource##_bar##_sparse_attr_group;	\
