@@ -97,4 +97,22 @@ extern void pci_adjust_legacy_attr(struct pci_bus *bus,
 extern int pci_create_resource_files(struct pci_dev *dev);
 extern void pci_remove_resource_files(struct pci_dev *dev);
 
+#define pci_dev_resource_group_export(_bar)						\
+	extern const struct attribute_group pci_dev_resource##_bar##_attr_group;	\
+	extern const struct attribute_group pci_dev_resource##_bar##_sparse_attr_group;	\
+	extern const struct attribute_group pci_dev_resource##_bar##_dense_attr_group
+
+pci_dev_resource_group_export(0);
+pci_dev_resource_group_export(1);
+pci_dev_resource_group_export(2);
+pci_dev_resource_group_export(3);
+pci_dev_resource_group_export(4);
+pci_dev_resource_group_export(5);
+
+#undef pci_dev_resource_group
+#define pci_dev_resource_group(_bar)			\
+	&pci_dev_resource##_bar##_attr_group,		\
+	&pci_dev_resource##_bar##_sparse_attr_group,	\
+	&pci_dev_resource##_bar##_dense_attr_group
+
 #endif /* __ALPHA_PCI_H */
