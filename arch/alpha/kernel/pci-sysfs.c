@@ -247,6 +247,63 @@ int pci_create_resource_files(struct pci_dev *pdev)
 	return 0;
 }
 
+enum pci_resource_type {
+	PCI_RESOURCE_NORMAL	= BIT(0),
+	PCI_RESOURCE_SPARSE	= BIT(1),
+	PCI_RESOURCE_DENSE	= BIT(2),
+};
+
+static umode_t pci_dev_resource_attr_is_visible(struct kobject *kobj,
+						struct bin_attribute *attr,
+						int bar,
+						enum pci_resource_type type)
+{
+	struct pci_dev *pdev = to_pci_dev(kobj_to_dev(kobj));
+	struct pci_controller *hose = pdev->sysdata;
+	resource_size_t resource_size = pci_resource_len(pdev, bar);
+	unsigned long flags = pci_resource_flags(pdev, bar);
+	enum pci_resource_type resource_type = PCI_RESOURCE_NORMAL;
+	unsigned long sparse_base, dense_base;
+
+	if (!resource_size)
+		return 0;
+
+	if (flags & IORESOURCE_MEM) {
+		sparse_base = hose->sparse_mem_base;
+		dense_base = hose->dense_mem_base;
+		if (sparse_base && !sparse_mem_mmap_fits(pdev, bar)) {
+			sparse_base = 0;
+			resource_type = PCI_RESOURCE_DENSE;
+		}
+	} else if (flags & IORESOURCE_IO) {
+		sparse_base = hose->sparse_io_base;
+		dense_base = hose->dense_io_base;
+	} else {
+		return 0;
+	}
+
+	if (sparse_base) {
+		resource_type = PCI_RESOURCE_SPARSE;
+		if (dense_base)
+			resource_type |= PCI_RESOURCE_DENSE;
+	}
+
+	if (!(resource_type & type))
+		return 0;
+
+	attr->size = resource_size;
+	attr->mmap = pci_mmap_resource_dense;
+
+	if (resource_type & PCI_RESOURCE_SPARSE) {
+		attr->size = resource_size << 5;
+		attr->mmap = pci_mmap_resource_sparse;
+	}
+
+	attr->private = &pdev->resource[bar];
+
+	return attr->attr.mode;
+}
+
 /* Legacy I/O bus mapping stuff. */
 
 static int __legacy_mmap_fits(struct pci_controller *hose,
