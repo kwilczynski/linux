@@ -66,21 +66,15 @@ static int pci_mmap_resource(struct kobject *kobj,
 			     struct vm_area_struct *vma, int sparse)
 {
 	struct pci_dev *pdev = to_pci_dev(kobj_to_dev(kobj));
-	struct resource *res = attr->private;
+	int barno = (unsigned long)attr->private;
+	struct resource *res = &pdev->resource[barno];
 	enum pci_mmap_state mmap_type;
 	struct pci_bus_region bar;
-	int i;
-
-	for (i = 0; i < PCI_STD_NUM_BARS; i++)
-		if (res == &pdev->resource[i])
-			break;
-	if (i >= PCI_STD_NUM_BARS)
-		return -ENODEV;
 
 	if (res->flags & IORESOURCE_MEM && iomem_is_exclusive(res->start))
 		return -EINVAL;
 
-	if (!__pci_mmap_fits(pdev, i, vma, sparse))
+	if (!__pci_mmap_fits(pdev, barno, vma, sparse))
 		return -EINVAL;
 
 	pcibios_resource_to_bus(pdev->bus, &bar, res);
@@ -168,7 +162,7 @@ static umode_t pci_dev_resource_attr_is_visible(struct kobject *kobj,
 		attr->mmap = pci_mmap_resource_sparse;
 	}
 
-	attr->private = &pdev->resource[bar];
+	attr->private = (void *)(unsigned long)bar;
 
 	return attr->attr.mode;
 }
