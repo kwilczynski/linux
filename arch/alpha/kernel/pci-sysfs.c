@@ -125,7 +125,7 @@ static umode_t pci_dev_resource_attr_is_visible(struct kobject *kobj,
 	struct pci_controller *hose = pdev->sysdata;
 	resource_size_t resource_size = pci_resource_len(pdev, bar);
 	unsigned long flags = pci_resource_flags(pdev, bar);
-	unsigned int resource_type = PCI_RESOURCE_NORMAL;
+	unsigned int resource_type = PCI_RESOURCE_BWX;
 	unsigned long sparse_base, dense_base;
 
 	if (!resource_size)
@@ -181,7 +181,7 @@ pci_dev_resource##_bar##_attr_is_visible(struct kobject *kobj,		   \
 					 int n)				   \
 {									   \
         return pci_dev_resource_attr_is_visible(kobj, a, _bar,		   \
-						PCI_RESOURCE_NORMAL);	   \
+						PCI_RESOURCE_BWX);	   \
 };									   \
 const struct								   \
 attribute_group pci_dev_resource##_bar##_attr_group = {			   \
