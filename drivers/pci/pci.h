@@ -18,9 +18,6 @@ bool pcie_cap_has_lnkctl(const struct pci_dev *dev);
 bool pcie_cap_has_rtctl(const struct pci_dev *dev);
 
 /* Functions internal to the PCI core code */
-#ifndef pci_dev_resource_group
-#define pci_dev_resource_group(x)
-#endif
 
 void pci_cleanup_rom(struct pci_dev *dev);
 #ifdef CONFIG_DMI
