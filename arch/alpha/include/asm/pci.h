@@ -98,22 +98,18 @@ extern void pci_adjust_legacy_attr(struct pci_bus *bus,
 #define PCI_RESOURCE_SPARSE	BIT(1)
 #define PCI_RESOURCE_DENSE	BIT(2)
 
-#define __export_resource_group(_bar)				\
-	extern const struct attribute_group			\
-		pci_dev_resource##_bar##_attr_group;		\
-	extern const struct attribute_group			\
-		pci_dev_resource##_bar##_sparse_attr_group;	\
-	extern const struct attribute_group			\
-		pci_dev_resource##_bar##_dense_attr_group
+#define __pci_dev_resource_group(_bar)						\
+extern const struct attribute_group pci_dev_resource##_bar##_attr_group;	\
+extern const struct attribute_group pci_dev_resource##_bar##_sparse_attr_group;	\
+extern const struct attribute_group pci_dev_resource##_bar##_dense_attr_group
 
-__export_resource_group(0);
-__export_resource_group(1);
-__export_resource_group(2);
-__export_resource_group(3);
-__export_resource_group(4);
-__export_resource_group(5);
+__pci_dev_resource_group(0);
+__pci_dev_resource_group(1);
+__pci_dev_resource_group(2);
+__pci_dev_resource_group(3);
+__pci_dev_resource_group(4);
+__pci_dev_resource_group(5);
 
-#undef pci_dev_resource_group
 #define pci_dev_resource_group(_bar)			\
 	&pci_dev_resource##_bar##_attr_group,		\
 	&pci_dev_resource##_bar##_sparse_attr_group,	\

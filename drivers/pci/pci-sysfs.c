@@ -1006,7 +1006,6 @@ void pci_remove_legacy_files(struct pci_bus *b)
 #endif /* HAVE_PCI_LEGACY */
 
 #if defined(HAVE_PCI_MMAP) || defined(ARCH_GENERIC_PCI_MMAP_RESOURCE)
-
 int pci_mmap_fits(struct pci_dev *pdev, int resno, struct vm_area_struct *vma,
 		  enum pci_mmap_api mmap_api)
 {
@@ -1222,7 +1221,6 @@ attribute_group pci_dev_resource##_bar##_wc_attr_group = {		\
 	.is_bin_visible = pci_dev_resource##_bar##_wc_attr_is_visible,	\
 }
 
-#undef pci_dev_resource_group
 #define pci_dev_resource_group(_bar)		\
 	&pci_dev_resource##_bar##_attr_group,	\
 	&pci_dev_resource##_bar##_wc_attr_group
@@ -1449,12 +1447,14 @@ static const struct attribute_group pci_dev_group = {
 
 const struct attribute_group *pci_dev_groups[] = {
 	&pci_dev_group,
+#if defined(HAVE_PCI_MMAP) || defined(ARCH_GENERIC_PCI_MMAP_RESOURCE) || defined(CONFIG_ALPHA)
 	pci_dev_resource_group(0),
 	pci_dev_resource_group(1),
 	pci_dev_resource_group(2),
 	pci_dev_resource_group(3),
 	pci_dev_resource_group(4),
 	pci_dev_resource_group(5),
+#endif
 	&pci_dev_config_attr_group,
 	&pci_dev_rom_attr_group,
 	&pci_dev_reset_attr_group,
