@@ -1070,6 +1070,9 @@ static ssize_t pci_resource_io(struct file *filp, struct kobject *kobj,
 	int bar = (unsigned long)attr->private;
 	unsigned long port = off;
 
+	if (!(pci_resource_flags(pdev, bar) & IORESOURCE_IO))
+		return -EINVAL;
+
 	port += pci_resource_start(pdev, bar);
 
 	if (port > pci_resource_end(pdev, bar))
@@ -1121,32 +1124,6 @@ static ssize_t pci_write_resource_io(struct file *filp, struct kobject *kobj,
 	return pci_resource_io(filp, kobj, attr, buf, off, count, true);
 }
 
-static ssize_t pci_dev_read_resource(struct file *filp, struct kobject *kobj,
-				     struct bin_attribute *attr, char *buf,
-				     loff_t off, size_t count)
-{
-	struct pci_dev *pdev = to_pci_dev(kobj_to_dev(kobj));
-	int bar = (unsigned long)attr->private;
-
-	if (pci_resource_flags(pdev, bar) & IORESOURCE_IO)
-		return pci_read_resource_io(filp, kobj, attr, buf, off, count);
-
-	return -EINVAL;
-}
-
-static ssize_t pci_dev_write_resource(struct file *filp, struct kobject *kobj,
-				      struct bin_attribute *attr, char *buf,
-				      loff_t off, size_t count)
-{
-	struct pci_dev *pdev = to_pci_dev(kobj_to_dev(kobj));
-	int bar = (unsigned long)attr->private;
-
-	if (pci_resource_flags(pdev, bar) & IORESOURCE_IO)
-		return pci_write_resource_io(filp, kobj, attr, buf, off, count);
-
-	return -EINVAL;
-}
-
 static int pci_dev_mmap_resource(struct file *filp, struct kobject *kobj,
 				 struct bin_attribute *attr,
 				 struct vm_area_struct *vma)
@@ -1188,8 +1165,8 @@ static umode_t pci_dev_resource_attr_is_visible(struct kobject *kobj,
 #define pci_dev_bin_attribute(_name, _bar)			\
 struct bin_attribute pci_dev_##_name##_attr = {			\
 	.attr = { .name = __stringify(_name), .mode = 0600 },	\
-	.read = pci_dev_read_resource,				\
-	.write = pci_dev_write_resource,			\
+	.read = pci_read_resource_io,				\
+	.write = pci_write_resource_io,				\
 	.mmap = pci_dev_mmap_resource,				\
 	.private = (void *)(unsigned long)_bar,			\
 	.f_mapping = iomem_get_mapping,				\
