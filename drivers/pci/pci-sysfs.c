@@ -1062,20 +1062,6 @@ static int pci_mmap_resource(struct kobject *kobj, struct bin_attribute *attr,
 	return pci_mmap_resource_range(pdev, bar, vma, mmap_type, write_combine);
 }
 
-static int pci_mmap_resource_uc(struct file *filp, struct kobject *kobj,
-				struct bin_attribute *attr,
-				struct vm_area_struct *vma)
-{
-	return pci_mmap_resource(kobj, attr, vma, 0);
-}
-
-static int pci_mmap_resource_wc(struct file *filp, struct kobject *kobj,
-				struct bin_attribute *attr,
-				struct vm_area_struct *vma)
-{
-	return pci_mmap_resource(kobj, attr, vma, 1);
-}
-
 static ssize_t pci_resource_io(struct file *filp, struct kobject *kobj,
 			       struct bin_attribute *attr, char *buf,
 			       loff_t off, size_t count, bool write)
@@ -1135,50 +1121,82 @@ static ssize_t pci_write_resource_io(struct file *filp, struct kobject *kobj,
 	return pci_resource_io(filp, kobj, attr, buf, off, count, true);
 }
 
+static ssize_t pci_dev_read_resource(struct file *filp, struct kobject *kobj,
+				     struct bin_attribute *attr, char *buf,
+				     loff_t off, size_t count)
+{
+	struct pci_dev *pdev = to_pci_dev(kobj_to_dev(kobj));
+	int bar = (unsigned long)attr->private;
+
+	if (pci_resource_flags(pdev, bar) & IORESOURCE_IO)
+		return pci_read_resource_io(filp, kobj, attr, buf, off, count);
+
+	return -EINVAL;
+}
+
+static ssize_t pci_dev_write_resource(struct file *filp, struct kobject *kobj,
+				      struct bin_attribute *attr, char *buf,
+				      loff_t off, size_t count)
+{
+	struct pci_dev *pdev = to_pci_dev(kobj_to_dev(kobj));
+	int bar = (unsigned long)attr->private;
+
+	if (pci_resource_flags(pdev, bar) & IORESOURCE_IO)
+		return pci_write_resource_io(filp, kobj, attr, buf, off, count);
+
+	return -EINVAL;
+}
+
+static int pci_dev_mmap_resource(struct file *filp, struct kobject *kobj,
+				 struct bin_attribute *attr,
+				 struct vm_area_struct *vma)
+{
+	struct pci_dev *pdev = to_pci_dev(kobj_to_dev(kobj));
+	int bar = (unsigned long)attr->private;
+	unsigned long flags = pci_resource_flags(pdev, bar);
+
+	if (arch_can_pci_mmap_wc() && (flags &
+	    (IORESOURCE_MEM | IORESOURCE_PREFETCH)) ==
+		(IORESOURCE_MEM | IORESOURCE_PREFETCH))
+		return pci_mmap_resource(kobj, attr, vma, 1);
+
+	if ((flags & IORESOURCE_MEM) ||
+	    (arch_can_pci_mmap_io() && (flags & IORESOURCE_IO)))
+		return pci_mmap_resource(kobj, attr, vma, 0);
+
+	return -EINVAL;
+}
+
 static umode_t pci_dev_resource_attr_is_visible(struct kobject *kobj,
 						struct bin_attribute *attr,
 						int bar, bool write_combine)
 {
 	struct pci_dev *pdev = to_pci_dev(kobj_to_dev(kobj));
 	resource_size_t resource_size = pci_resource_len(pdev, bar);
-	unsigned long flags = pci_resource_flags(pdev, bar);
 
 	if (!resource_size)
 		return 0;
 
-	if (write_combine) {
-		if (arch_can_pci_mmap_wc() && (flags &
-		    (IORESOURCE_MEM | IORESOURCE_PREFETCH)) ==
-			(IORESOURCE_MEM | IORESOURCE_PREFETCH))
-			attr->mmap = pci_mmap_resource_wc;
-		else
-			return 0;
-	} else {
-		if (flags & IORESOURCE_MEM) {
-			attr->mmap = pci_mmap_resource_uc;
-		} else if (flags & IORESOURCE_IO) {
-			attr->read = pci_read_resource_io;
-			attr->write = pci_write_resource_io;
-			if (arch_can_pci_mmap_io())
-				attr->mmap = pci_mmap_resource_uc;
-		} else {
-			return 0;
-		}
-	}
+	if (write_combine && !arch_can_pci_mmap_wc())
+		return 0;
 
 	attr->size = resource_size;
-	if (attr->mmap)
-		attr->f_mapping = iomem_get_mapping;
-
-	attr->private = (void *)(unsigned long)bar;
 
 	return attr->attr.mode;
+};
+
+#define pci_dev_bin_attribute(_name, _bar)			\
+struct bin_attribute pci_dev_##_name##_attr = {			\
+	.attr = { .name = __stringify(_name), .mode = 0600 },	\
+	.read = pci_dev_read_resource,				\
+	.write = pci_dev_write_resource,			\
+	.mmap = pci_dev_mmap_resource,				\
+	.private = (void *)(unsigned long)_bar,			\
+	.f_mapping = iomem_get_mapping,				\
 }
 
 #define pci_dev_resource_attr(_bar)					\
-static struct bin_attribute						\
-pci_dev_resource##_bar##_attr = __BIN_ATTR(resource##_bar,		\
-					   0600, NULL, NULL, 0);	\
+static pci_dev_bin_attribute(resource##_bar, _bar);			\
 									\
 static struct bin_attribute *pci_dev_resource##_bar##_attrs[] = {	\
 	&pci_dev_resource##_bar##_attr,					\
@@ -1199,9 +1217,7 @@ attribute_group pci_dev_resource##_bar##_attr_group = {			\
 	.is_bin_visible = pci_dev_resource##_bar##_attr_is_visible,	\
 };									\
 									\
-static struct bin_attribute						\
-pci_dev_resource##_bar##_wc_attr = __BIN_ATTR(resource##_bar##_wc,	\
-					      0600, NULL, NULL, 0);	\
+static pci_dev_bin_attribute(resource##_bar##_wc, _bar);		\
 									\
 static struct bin_attribute *pci_dev_resource##_bar##_wc_attrs[] = {	\
 	&pci_dev_resource##_bar##_wc_attr,				\
