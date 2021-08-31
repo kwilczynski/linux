@@ -1104,16 +1104,16 @@ static ssize_t pci_resource_io(struct file *filp, struct kobject *kobj,
 	return -EINVAL;
 }
 
-static ssize_t pci_read_resource_io(struct file *filp, struct kobject *kobj,
-				    struct bin_attribute *attr, char *buf,
-				    loff_t off, size_t count)
+static ssize_t pci_read_resource(struct file *filp, struct kobject *kobj,
+				 struct bin_attribute *attr, char *buf,
+				 loff_t off, size_t count)
 {
 	return pci_resource_io(filp, kobj, attr, buf, off, count, false);
 }
 
-static ssize_t pci_write_resource_io(struct file *filp, struct kobject *kobj,
-				     struct bin_attribute *attr, char *buf,
-				     loff_t off, size_t count)
+static ssize_t pci_write_resource(struct file *filp, struct kobject *kobj,
+				  struct bin_attribute *attr, char *buf,
+				  loff_t off, size_t count)
 {
 	int ret;
 
@@ -1165,8 +1165,8 @@ static umode_t pci_dev_resource_attr_is_visible(struct kobject *kobj,
 #define pci_dev_bin_attribute(_name, _bar)			\
 struct bin_attribute pci_dev_##_name##_attr = {			\
 	.attr = { .name = __stringify(_name), .mode = 0600 },	\
-	.read = pci_read_resource_io,				\
-	.write = pci_write_resource_io,				\
+	.read = pci_read_resource,				\
+	.write = pci_write_resource,				\
 	.mmap = pci_dev_mmap_resource,				\
 	.private = (void *)(unsigned long)_bar,			\
 	.f_mapping = iomem_get_mapping,				\
