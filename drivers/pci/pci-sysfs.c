@@ -1013,7 +1013,7 @@ int pci_mmap_fits(struct pci_dev *pdev, int resno, struct vm_area_struct *vma,
 	unsigned long nr, start, size;
 	resource_size_t pci_start = 0, pci_end;
 
-	if (pci_resource_len(pdev, resno) == 0)
+	if (!pci_resource_len(pdev, resno))
 		return 0;
 	nr = vma_pages(vma);
 	start = vma->vm_pgoff;
