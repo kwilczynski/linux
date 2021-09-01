@@ -1053,21 +1053,19 @@ static int pci_mmap_resource(struct file *filp, struct kobject *kobj,
 		return ret;
 
 	if (!(res->flags & IORESOURCE_MEM ||
-	    (arch_can_pci_mmap_io() && res->flags & IORESOURCE_IO)))
+	    (arch_can_pci_mmap_io() && (res->flags & IORESOURCE_IO))))
 		return -EINVAL;
 
-	if (arch_can_pci_mmap_wc() && (res->flags &
-	    (IORESOURCE_MEM | IORESOURCE_PREFETCH)) ==
-		(IORESOURCE_MEM | IORESOURCE_PREFETCH))
-		write_combine = 1;
-
-	if (res->flags & IORESOURCE_MEM && iomem_is_exclusive(res->start))
+	if ((res->flags & IORESOURCE_MEM) && iomem_is_exclusive(res->start))
 		return -EINVAL;
 
 	if (!pci_mmap_fits(pdev, bar, vma, PCI_MMAP_SYSFS))
 		return -EINVAL;
 
-	mmap_type = res->flags & IORESOURCE_MEM ? pci_mmap_mem : pci_mmap_io;
+	if (arch_can_pci_mmap_wc() && (res->flags & IORESOURCE_PREFETCH))
+		write_combine = 1;
+
+	mmap_type = (res->flags & IORESOURCE_MEM) ? pci_mmap_mem : pci_mmap_io;
 
 	return pci_mmap_resource_range(pdev, bar, vma, mmap_type, write_combine);
 }
@@ -1135,7 +1133,7 @@ static ssize_t pci_write_resource(struct file *filp, struct kobject *kobj,
 }
 
 static umode_t pci_dev_resource_attr_is_visible(struct kobject *kobj,
-						struct bin_attribute *attr,
+						struct bin_attribute *a,
 						int bar, bool write_combine)
 {
 	struct pci_dev *pdev = to_pci_dev(kobj_to_dev(kobj));
@@ -1145,13 +1143,14 @@ static umode_t pci_dev_resource_attr_is_visible(struct kobject *kobj,
 		return 0;
 
 	if (write_combine && !(arch_can_pci_mmap_wc() &&
-	    (res->flags & (IORESOURCE_MEM | IORESOURCE_PREFETCH)) ==
+	    (pci_resource_flags(pdev, bar) &
+	     (IORESOURCE_MEM | IORESOURCE_PREFETCH)) ==
 		(IORESOURCE_MEM | IORESOURCE_PREFETCH)))
 		return 0;
 
-	attr->size = resource_size;
+	a->size = resource_size;
 
-	return attr->attr.mode;
+	return a->attr.mode;
 };
 
 #define pci_dev_bin_attribute(_name, _bar)			\
