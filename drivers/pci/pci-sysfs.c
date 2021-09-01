@@ -1144,7 +1144,9 @@ static umode_t pci_dev_resource_attr_is_visible(struct kobject *kobj,
 	if (!resource_size)
 		return 0;
 
-	if (write_combine && !arch_can_pci_mmap_wc())
+	if (write_combine && !(arch_can_pci_mmap_wc() &&
+	    (res->flags & (IORESOURCE_MEM | IORESOURCE_PREFETCH)) ==
+		(IORESOURCE_MEM | IORESOURCE_PREFETCH)))
 		return 0;
 
 	attr->size = resource_size;
