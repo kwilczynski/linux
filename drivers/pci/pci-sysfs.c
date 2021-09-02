@@ -1053,7 +1053,7 @@ static int pci_mmap_resource(struct kobject *kobj, struct bin_attribute *attr,
 
 	if (!(res->flags & IORESOURCE_MEM ||
 	    (arch_can_pci_mmap_io() && (res->flags & IORESOURCE_IO))))
-		return -ENOTSUPP;
+		return -EIO;
 
 	if ((res->flags & IORESOURCE_MEM) && iomem_is_exclusive(res->start))
 		return -EINVAL;
@@ -1089,7 +1089,7 @@ static ssize_t pci_resource_io(struct file *filp, struct kobject *kobj,
 	unsigned long port = off;
 
 	if (!(pci_resource_flags(pdev, bar) & IORESOURCE_IO))
-		return -ENOTSUPP;
+		return -EIO;
 
 	port += pci_resource_start(pdev, bar);
 
