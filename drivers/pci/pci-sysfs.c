@@ -1031,22 +1031,21 @@ int pci_mmap_fits(struct pci_dev *pdev, int resno, struct vm_area_struct *vma,
 
 /**
  * pci_mmap_resource - map a PCI resource into user memory space
- * @filp: open sysfs file
  * @kobj: kobject for mapping
  * @attr: struct bin_attribute for the file being mapped
  * @vma: struct vm_area_struct passed into the mmap
+ * @write_combine: 1 for write_combine mapping
  *
  * Use the regular PCI mapping routines to map a PCI resource into userspace.
  */
-static int pci_mmap_resource(struct file *filp, struct kobject *kobj,
-			     struct bin_attribute *attr,
-			     struct vm_area_struct *vma)
+static int pci_mmap_resource(struct kobject *kobj, struct bin_attribute *attr,
+			     struct vm_area_struct *vma, int write_combine)
 {
 	struct pci_dev *pdev = to_pci_dev(kobj_to_dev(kobj));
 	int bar = (unsigned long)attr->private;
 	enum pci_mmap_state mmap_type;
 	struct resource *res = &pdev->resource[bar];
-	int ret, write_combine = 0;
+	int ret;
 
 	ret = security_locked_down(LOCKDOWN_PCI_ACCESS);
 	if (ret)
@@ -1054,7 +1053,7 @@ static int pci_mmap_resource(struct file *filp, struct kobject *kobj,
 
 	if (!(res->flags & IORESOURCE_MEM ||
 	    (arch_can_pci_mmap_io() && (res->flags & IORESOURCE_IO))))
-		return -EINVAL;
+		return -ENOTSUPP;
 
 	if ((res->flags & IORESOURCE_MEM) && iomem_is_exclusive(res->start))
 		return -EINVAL;
@@ -1062,12 +1061,23 @@ static int pci_mmap_resource(struct file *filp, struct kobject *kobj,
 	if (!pci_mmap_fits(pdev, bar, vma, PCI_MMAP_SYSFS))
 		return -EINVAL;
 
-	if (arch_can_pci_mmap_wc() && (res->flags & IORESOURCE_PREFETCH))
-		write_combine = 1;
-
 	mmap_type = (res->flags & IORESOURCE_MEM) ? pci_mmap_mem : pci_mmap_io;
 
 	return pci_mmap_resource_range(pdev, bar, vma, mmap_type, write_combine);
+}
+
+static int pci_mmap_resource_uc(struct file *filp, struct kobject *kobj,
+				struct bin_attribute *attr,
+				struct vm_area_struct *vma)
+{
+	return pci_mmap_resource(kobj, attr, vma, 0);
+}
+
+static int pci_mmap_resource_wc(struct file *filp, struct kobject *kobj,
+				struct bin_attribute *attr,
+				struct vm_area_struct *vma)
+{
+	return pci_mmap_resource(kobj, attr, vma, 1);
 }
 
 static ssize_t pci_resource_io(struct file *filp, struct kobject *kobj,
@@ -1079,7 +1089,7 @@ static ssize_t pci_resource_io(struct file *filp, struct kobject *kobj,
 	unsigned long port = off;
 
 	if (!(pci_resource_flags(pdev, bar) & IORESOURCE_IO))
-		return -EINVAL;
+		return -ENOTSUPP;
 
 	port += pci_resource_start(pdev, bar);
 
@@ -1153,18 +1163,20 @@ static umode_t pci_dev_resource_attr_is_visible(struct kobject *kobj,
 	return a->attr.mode;
 };
 
-#define pci_dev_bin_attribute(_name, _bar)			\
+#define pci_dev_bin_attribute(_name, _mmap, _bar)		\
 struct bin_attribute pci_dev_##_name##_attr = {			\
 	.attr = { .name = __stringify(_name), .mode = 0600 },	\
 	.read = pci_read_resource,				\
 	.write = pci_write_resource,				\
-	.mmap = pci_mmap_resource,				\
+	.mmap = _mmap,						\
 	.private = (void *)(unsigned long)_bar,			\
 	.f_mapping = iomem_get_mapping,				\
 }
 
 #define pci_dev_resource_attr(_bar)					\
-static pci_dev_bin_attribute(resource##_bar, _bar);			\
+static pci_dev_bin_attribute(resource##_bar,				\
+			     pci_mmap_resource_uc,			\
+			     _bar);					\
 									\
 static struct bin_attribute *pci_dev_resource##_bar##_attrs[] = {	\
 	&pci_dev_resource##_bar##_attr,					\
@@ -1185,7 +1197,9 @@ attribute_group pci_dev_resource##_bar##_attr_group = {			\
 	.is_bin_visible = pci_dev_resource##_bar##_attr_is_visible,	\
 };									\
 									\
-static pci_dev_bin_attribute(resource##_bar##_wc, _bar);		\
+static pci_dev_bin_attribute(resource##_bar##_wc,			\
+			     pci_mmap_resource_wc,			\
+			     _bar);					\
 									\
 static struct bin_attribute *pci_dev_resource##_bar##_wc_attrs[] = {	\
 	&pci_dev_resource##_bar##_wc_attr,				\
