@@ -1380,9 +1380,6 @@ static const struct attribute_group pci_dev_reset_attr_group = {
 
 int __must_check pci_create_sysfs_dev_files(struct pci_dev *pdev)
 {
-	if (!sysfs_initialized)
-		return -EACCES;
-
 	return pci_create_resource_files(pdev);
 }
 
@@ -1394,9 +1391,6 @@ int __must_check pci_create_sysfs_dev_files(struct pci_dev *pdev)
  */
 void pci_remove_sysfs_dev_files(struct pci_dev *pdev)
 {
-	if (!sysfs_initialized)
-		return;
-
 	pci_remove_resource_files(pdev);
 }
 
