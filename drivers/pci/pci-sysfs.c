@@ -1142,7 +1142,7 @@ static ssize_t pci_write_resource_io(struct file *filp, struct kobject *kobj,
  * If we created resource files for @pdev, remove them from sysfs and
  * free their resources.
  */
-static void pci_remove_resource_files(struct pci_dev *pdev)
+void pci_remove_resource_files(struct pci_dev *pdev)
 {
 	int i;
 
@@ -1213,7 +1213,7 @@ static int pci_create_attr(struct pci_dev *pdev, int num, int write_combine)
  *
  * Walk the resources in @pdev creating files for each resource available.
  */
-static int pci_create_resource_files(struct pci_dev *pdev)
+int pci_create_resource_files(struct pci_dev *pdev)
 {
 	int i;
 	int retval;
@@ -1377,22 +1377,6 @@ static const struct attribute_group pci_dev_reset_attr_group = {
 	.attrs = pci_dev_reset_attrs,
 	.is_visible = pci_dev_reset_attr_is_visible,
 };
-
-int __must_check pci_create_sysfs_dev_files(struct pci_dev *pdev)
-{
-	return pci_create_resource_files(pdev);
-}
-
-/**
- * pci_remove_sysfs_dev_files - cleanup PCI specific sysfs files
- * @pdev: device whose entries we should free
- *
- * Cleanup when @pdev is removed from sysfs.
- */
-void pci_remove_sysfs_dev_files(struct pci_dev *pdev)
-{
-	pci_remove_resource_files(pdev);
-}
 
 static int __init pci_sysfs_init(void)
 {
